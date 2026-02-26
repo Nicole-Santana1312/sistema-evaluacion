@@ -13,27 +13,34 @@ export const RegisterInstitutionPage = () => {
     educationLevel: "Media",
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!form.institutionName || !form.adminName || !form.email || !form.password) {
+    if (
+      !form.institutionName ||
+      !form.adminName ||
+      !form.email ||
+      !form.password
+    ) {
       alert("Por favor completa todos los campos.");
       return;
     }
 
     try {
-      // Generar código institucional simple
-      const code = form.institutionName
-        .trim()
-        .toUpperCase()
-        .replace(/\s+/g, "_")
-        .slice(0, 50);
+      // 🔥 Generar código institucional único (UUID corto)
+      const code = crypto
+        .randomUUID()
+        .replace(/-/g, "")
+        .slice(0, 10)
+        .toUpperCase();
 
-      // 1️⃣ Insertar institución
+      // 1️⃣ Crear institución
       const { data: institutionData, error: institutionError } = await supabase
         .from("institutions")
         .insert([
@@ -49,30 +56,36 @@ export const RegisterInstitutionPage = () => {
 
       if (institutionError) throw institutionError;
 
-      // 2️⃣ Crear usuario administrador
-      // Nota: tu tabla users requiere first_name y last_name, entonces separamos adminName
+      // 2️⃣ Crear usuario en Supabase Auth
+      const { data: authData, error: authError } =
+        await supabase.auth.signUp({
+          email: form.email,
+          password: form.password,
+        });
+
+      if (authError) throw authError;
+
+      const userId = authData.user?.id;
+      if (!userId) throw new Error("No se pudo obtener el ID del usuario");
+
+      // Separar nombre
       const [firstName, ...rest] = form.adminName.trim().split(" ");
       const lastName = rest.join(" ") || "Admin";
 
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .insert([
-          {
-            institution_id: institutionData.id,
-            email: form.email,
-            password_hash: form.password, // idealmente aquí deberías hashear antes
-            first_name: firstName,
-            last_name: lastName,
-            status: "active",
-          },
-        ])
-        .select()
-        .single();
+      // 3️⃣ Insertar en tabla personalizada users
+      const { error: userError } = await supabase.from("users").insert([
+        {
+          id: userId,
+          institution_id: institutionData.id,
+          first_name: firstName,
+          last_name: lastName,
+          status: "active",
+        },
+      ]);
 
       if (userError) throw userError;
 
-      // 3️⃣ Asignar rol de super_admin
-      // Busca el rol super_admin
+      // 4️⃣ Asignar rol super_admin
       const { data: roleData, error: roleError } = await supabase
         .from("roles")
         .select("id")
@@ -81,9 +94,13 @@ export const RegisterInstitutionPage = () => {
 
       if (roleError) throw roleError;
 
-      await supabase.from("user_roles").insert([
-        { user_id: userData.id, role_id: roleData.id },
-      ]);
+      const { error: roleAssignError } = await supabase
+        .from("user_roles")
+        .insert([
+          { user_id: userId, role_id: roleData.id },
+        ]);
+
+      if (roleAssignError) throw roleAssignError;
 
       alert("Institución y administrador registrados correctamente ✅");
 
@@ -97,7 +114,7 @@ export const RegisterInstitutionPage = () => {
         educationLevel: "Media",
       });
     } catch (err: any) {
-      console.error(err);
+      console.error("ERROR COMPLETO:", err);
       alert("Error al registrar: " + err.message);
     }
   };
