@@ -1,6 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import { LoginPage } from "../../modules/auth/LoginPage";
-import { DashboardPage } from "../../modules/dashboard/DashboardPage";
+import DashboardPage from "../../modules/dashboard/DashboardPage";
 import { RegisterInstitutionPage } from "../../modules/institution/RegisterInstitutionPage";
 import { VerifyPage } from "../../modules/auth/VerifyPage";
 import { ProtectedRoute } from "./ProtectedRoute";
