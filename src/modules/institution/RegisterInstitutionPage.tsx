@@ -1,9 +1,19 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
-import { FaUser, FaEnvelope, FaLock, FaUniversity } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
+import {
+  FaUser,
+  FaEnvelope,
+  FaLock,
+  FaUniversity,
+  FaGlobe,
+  FaGraduationCap,
+} from "react-icons/fa";
 import { supabase } from "../../lib/supabaseClient";
 
 export const RegisterInstitutionPage = () => {
+  const navigate = useNavigate();
+
   const [form, setForm] = useState({
     institutionName: "",
     adminName: "",
@@ -33,34 +43,14 @@ export const RegisterInstitutionPage = () => {
     }
 
     try {
-      // 🔥 Generar código institucional único (UUID corto)
-      const code = crypto
-        .randomUUID()
-        .replace(/-/g, "")
-        .slice(0, 10)
-        .toUpperCase();
-
-      // 1️⃣ Crear institución
-      const { data: institutionData, error: institutionError } = await supabase
-        .from("institutions")
-        .insert([
-          {
-            name: form.institutionName,
-            institutional_code: code,
-            country: form.country,
-            education_level: form.educationLevel,
-          },
-        ])
-        .select()
-        .single();
-
-      if (institutionError) throw institutionError;
-
-      // 2️⃣ Crear usuario en Supabase Auth
+      // 1️⃣ Crear usuario en Auth
       const { data: authData, error: authError } =
         await supabase.auth.signUp({
           email: form.email,
           password: form.password,
+          options: {
+            emailRedirectTo: "http://localhost:5173/verify",
+          },
         });
 
       if (authError) throw authError;
@@ -68,51 +58,45 @@ export const RegisterInstitutionPage = () => {
       const userId = authData.user?.id;
       if (!userId) throw new Error("No se pudo obtener el ID del usuario");
 
+      // 2️⃣ Crear institución
+      const code = crypto
+        .randomUUID()
+        .replace(/-/g, "")
+        .slice(0, 10)
+        .toUpperCase();
+
+      const { data: institutionData, error: institutionError } =
+        await supabase
+          .from("institutions")
+          .insert([
+            {
+              name: form.institutionName,
+              institutional_code: code,
+              country: form.country,
+              education_level: form.educationLevel,
+            },
+          ])
+          .select()
+          .single();
+
+      if (institutionError) throw institutionError;
+
       // Separar nombre
       const [firstName, ...rest] = form.adminName.trim().split(" ");
       const lastName = rest.join(" ") || "Admin";
 
-      // 3️⃣ Insertar en tabla personalizada users
-      const { error: userError } = await supabase.from("users").insert([
-        {
-          id: userId,
+      // 💾 Guardar datos para insertarlos después de verificar
+      localStorage.setItem(
+        "pendingUserData",
+        JSON.stringify({
           institution_id: institutionData.id,
           first_name: firstName,
           last_name: lastName,
-          status: "active",
-        },
-      ]);
+        })
+      );
 
-      if (userError) throw userError;
-
-      // 4️⃣ Asignar rol super_admin
-      const { data: roleData, error: roleError } = await supabase
-        .from("roles")
-        .select("id")
-        .eq("name", "super_admin")
-        .single();
-
-      if (roleError) throw roleError;
-
-      const { error: roleAssignError } = await supabase
-        .from("user_roles")
-        .insert([
-          { user_id: userId, role_id: roleData.id },
-        ]);
-
-      if (roleAssignError) throw roleAssignError;
-
-      alert("Institución y administrador registrados correctamente ✅");
-
-      // Limpiar formulario
-      setForm({
-        institutionName: "",
-        adminName: "",
-        email: "",
-        password: "",
-        country: "República Dominicana",
-        educationLevel: "Media",
-      });
+      alert("Revisa tu correo para verificar tu cuenta.");
+      navigate("/verify");
     } catch (err: any) {
       console.error("ERROR COMPLETO:", err);
       alert("Error al registrar: " + err.message);
@@ -122,12 +106,10 @@ export const RegisterInstitutionPage = () => {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <div style={styles.logoContainer}>
-          <div style={styles.logoPlaceholder}>LOGO</div>
-          <h2 style={styles.title}>Crear Institución</h2>
-        </div>
+        <h2 style={styles.title}>Crear Institución</h2>
 
         <form style={styles.form} onSubmit={handleSubmit}>
+          {/* Nombre Institución */}
           <div style={styles.inputGroup}>
             <FaUniversity style={styles.icon} />
             <input
@@ -140,6 +122,7 @@ export const RegisterInstitutionPage = () => {
             />
           </div>
 
+          {/* Nombre Administrador */}
           <div style={styles.inputGroup}>
             <FaUser style={styles.icon} />
             <input
@@ -152,6 +135,7 @@ export const RegisterInstitutionPage = () => {
             />
           </div>
 
+          {/* Email */}
           <div style={styles.inputGroup}>
             <FaEnvelope style={styles.icon} />
             <input
@@ -164,6 +148,7 @@ export const RegisterInstitutionPage = () => {
             />
           </div>
 
+          {/* Password */}
           <div style={styles.inputGroup}>
             <FaLock style={styles.icon} />
             <input
@@ -176,26 +161,39 @@ export const RegisterInstitutionPage = () => {
             />
           </div>
 
+          {/* País */}
           <div style={styles.inputGroup}>
-            <input
-              type="text"
+            <FaGlobe style={styles.icon} />
+            <select
               name="country"
-              placeholder="País"
-              style={styles.input}
               value={form.country}
               onChange={handleChange}
-            />
+              style={styles.input}
+            >
+              <option value="República Dominicana">🇩🇴 República Dominicana</option>
+              <option value="México">🇲🇽 México</option>
+              <option value="Colombia">🇨🇴 Colombia</option>
+              <option value="Argentina">🇦🇷 Argentina</option>
+              <option value="España">🇪🇸 España</option>
+              <option value="Estados Unidos">🇺🇸 Estados Unidos</option>
+            </select>
           </div>
 
+          {/* Nivel Educativo */}
           <div style={styles.inputGroup}>
-            <input
-              type="text"
+            <FaGraduationCap style={styles.icon} />
+            <select
               name="educationLevel"
-              placeholder="Nivel educativo"
-              style={styles.input}
               value={form.educationLevel}
               onChange={handleChange}
-            />
+              style={styles.input}
+            >
+              <option value="Inicial">Inicial</option>
+              <option value="Primaria">Primaria</option>
+              <option value="Media">Media</option>
+              <option value="Secundaria">Secundaria</option>
+              <option value="Universitario">Universitario</option>
+            </select>
           </div>
 
           <button type="submit" style={styles.button}>
@@ -220,26 +218,11 @@ const styles: { [key: string]: CSSProperties } = {
     padding: "40px",
     borderRadius: "20px",
     width: "400px",
-    boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-  },
-  logoContainer: {
-    textAlign: "center",
-    marginBottom: "30px",
-  },
-  logoPlaceholder: {
-    width: "80px",
-    height: "80px",
-    borderRadius: "50%",
-    backgroundColor: "#1E3A8A",
-    color: "white",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    margin: "0 auto 15px auto",
-    fontWeight: "bold",
   },
   title: {
     color: "#1E3A8A",
+    textAlign: "center",
+    marginBottom: "20px",
   },
   form: {
     display: "flex",
@@ -273,6 +256,5 @@ const styles: { [key: string]: CSSProperties } = {
     border: "none",
     cursor: "pointer",
     fontWeight: "bold",
-    marginTop: "10px",
   },
 };
